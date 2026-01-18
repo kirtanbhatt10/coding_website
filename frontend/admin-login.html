@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Coding Competition</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="light-mode">
+    <div class="landing-hero">
+        <div class="registration-form" style="max-width: 400px;">
+            <h2 style="margin-bottom: 30px; text-align: center;">🔐 Admin Login</h2>
+            <div class="form-group">
+                <label for="admin-password">Admin Password</label>
+                <input type="password" id="admin-password" name="password" required placeholder="Enter admin password" autofocus>
+                <small style="color: var(--text-light-secondary); font-size: 0.85rem; display: block; margin-top: 5px;">
+                    Default password: <code>kjk_codedthisinonenight</code><br>
+                    <span style="color: #f59e0b;">Note: If you created an event with an older password, use that password or create a new event.</span>
+                </small>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="loginAdmin()">Login</button>
+            <div id="login-error" style="margin-top: 15px; color: var(--danger-color); display: none; padding: 10px; background: rgba(239, 68, 68, 0.1); border-radius: 5px; border-left: 4px solid var(--danger-color);"></div>
+            <div style="margin-top: 20px; text-align: center;">
+                <a href="/" style="color: var(--primary-color); text-decoration: none;">← Back to Home</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loginAdmin() {
+            const password = document.getElementById('admin-password').value;
+            if (!password) {
+                document.getElementById('login-error').textContent = 'Please enter a password';
+                document.getElementById('login-error').style.display = 'block';
+                return;
+            }
+
+            const errorDiv = document.getElementById('login-error');
+            errorDiv.style.display = 'none';
+
+            // Check if event exists and verify password
+            try {
+                const eventResponse = await fetch('/api/admin/event/active');
+                
+                if (eventResponse.ok) {
+                    const event = await eventResponse.json();
+                    if (event && event.id) {
+                        // Verify password with backend
+                        try {
+                            const verifyResponse = await fetch(`/api/admin/verify-password/${event.id}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ password: password })
+                            });
+                            
+                            if (!verifyResponse.ok) {
+                                const errorData = await verifyResponse.json().catch(() => ({ detail: 'Incorrect password' }));
+                                errorDiv.textContent = errorData.detail || 'Incorrect password. If you created an event with the old default password, you may need to create a new event or use the old password.';
+                                errorDiv.style.display = 'block';
+                                return;
+                            }
+                        } catch (verifyError) {
+                            console.error('Password verification error:', verifyError);
+                            errorDiv.textContent = 'Error verifying password. Please try again.';
+                            errorDiv.style.display = 'block';
+                            return;
+                        }
+                    }
+                    // If no event exists, allow access (first time setup)
+                } else if (eventResponse.status === 404) {
+                    // No event exists - allow access for first time setup
+                    console.log('No event exists - allowing access for first time setup');
+                } else {
+                    // Other error - still allow access (might be database issue)
+                    console.log('Event check returned status:', eventResponse.status);
+                }
+            } catch (error) {
+                console.error('Password verification error:', error);
+                // If error, allow access (might be first time setup or database not ready)
+                console.log('Allowing access despite error (first time setup?)');
+            }
+
+            // Store password in sessionStorage for this session
+            sessionStorage.setItem('admin_password', password);
+            // Redirect to admin panel
+            window.location.href = '/admin';
+        }
+
+        // Allow Enter key to submit
+        document.getElementById('admin-password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loginAdmin();
+            }
+        });
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+        }
+        
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        if (savedTheme === 'dark') {
+            document.body.classList.remove('light-mode');
+            document.body.classList.add('dark-mode');
+        }
+    </script>
+</body>
+</html>

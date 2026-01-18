@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Coding Competition</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="light-mode">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <img id="navbar-logo" src="/static/logo/default-logo.png" alt="College Logo" class="navbar-logo" onerror="this.style.display='none'">
+            <span>Admin Panel</span>
+        </div>
+        <div class="navbar-links">
+            <a href="/">Home</a>
+            <a href="/hall-of-fame">Hall of Fame</a>
+            <a href="/admin-login" onclick="sessionStorage.removeItem('admin_password')">Logout</a>
+            <button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+        </div>
+    </nav>
+
+    <div class="admin-container">
+        <h1 style="text-align: center; margin-bottom: 40px;">Admin Control Panel</h1>
+
+        <!-- Event Management -->
+        <div class="admin-section">
+            <h2>Event Management</h2>
+            <div class="form-group">
+                <label for="event-name">Event Name</label>
+                <input type="text" id="event-name" placeholder="Enter event name" required>
+            </div>
+            <div class="form-group">
+                <label for="admin-password">Admin Password (for this event)</label>
+                <input type="password" id="admin-password" placeholder="Enter password (default: kjk_codedthisinonenight)" value="kjk_codedthisinonenight">
+                <small style="color: var(--text-light-secondary); font-size: 0.9rem; display: block; margin-top: 5px;">This password will be required to access admin panel for this event</small>
+            </div>
+            <button class="btn btn-primary" id="create-event-btn">Create Event</button>
+            
+            <div id="current-event" style="margin-top: 20px; padding: 20px; background: rgba(99, 102, 241, 0.1); border-radius: 15px; border: 2px solid rgba(99, 102, 241, 0.3);">
+                <strong>Current Event:</strong> <span id="event-status">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Logo Upload -->
+        <div class="admin-section">
+            <h2>Upload College Logo</h2>
+            <div class="file-upload">
+                <input type="file" id="logo-upload" accept="image/png,image/jpeg,image/jpg" onchange="previewLogo(this)">
+                <img id="preview-logo" class="preview-logo" style="display: none;" alt="Logo preview">
+            </div>
+            <button class="btn btn-primary" onclick="uploadLogo()" id="upload-btn" disabled>Upload Logo</button>
+        </div>
+
+        <!-- Contest Controls -->
+        <div class="admin-section">
+            <h2>Contest Controls</h2>
+            <div class="control-buttons">
+                <button class="btn btn-success" onclick="startContest()" id="start-btn">Start Contest</button>
+                <button class="btn btn-danger" onclick="stopContest()" id="stop-btn">Stop Contest</button>
+                <button class="btn btn-warning" onclick="resetContest()" id="reset-btn">Reset Contest</button>
+            </div>
+        </div>
+
+        <!-- Export Data -->
+        <div class="admin-section">
+            <h2>Export Data</h2>
+            <div class="control-buttons">
+                <button class="btn btn-primary" onclick="exportLeaderboard()">Export Leaderboard (CSV)</button>
+                <button class="btn btn-primary" onclick="exportHallOfFame()">Export Hall of Fame (CSV)</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    <script>
+        // Wait for admin.js to fully load before proceeding
+        window.adminScriptLoaded = false;
+    </script>
+    <script src="/static/js/admin.js" onload="window.adminScriptLoaded = true; console.log('✅ admin.js loaded and executed'); console.log('✅ Checking window.createNewEvent:', typeof window.createNewEvent);" onerror="console.error('❌ Failed to load admin.js')"></script>
+    <script>
+        // Verify function is available after script loads
+        setTimeout(function() {
+            console.log('🔍 Post-load check - window.createNewEvent:', typeof window.createNewEvent);
+            if (typeof window.createNewEvent !== 'function') {
+                console.error('❌ CRITICAL: createNewEvent still not available after script load!');
+            }
+        }, 100);
+    </script>
+    <script>
+        // Wait for admin.js to load before setting up event listeners
+        function setupEventListeners() {
+            const createBtn = document.getElementById('create-event-btn');
+            if (!createBtn) {
+                console.warn('⚠️ Create event button not found yet, will retry...');
+                return false;
+            }
+            
+            // Check if listener already attached
+            if (createBtn.hasAttribute('data-listener-attached')) {
+                console.log('✅ Event listener already attached');
+                return true;
+            }
+            
+            // Check if function is available - ONLY check window, not local scope
+            if (typeof window.createNewEvent !== 'function') {
+                console.warn('⚠️ window.createNewEvent not available yet, will retry...');
+                return false;
+            }
+            
+            // Add listener
+            createBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🚀 Button clicked, calling createNewEvent...');
+                
+                // Only use window.createNewEvent
+                if (typeof window.createNewEvent === 'function') {
+                    window.createNewEvent(e);
+                } else {
+                    console.error('❌ createNewEvent function not found!');
+                    alert('Error: createNewEvent function not loaded.\n\nPlease refresh the page (F5)');
+                }
+            });
+            
+            createBtn.setAttribute('data-listener-attached', 'true');
+            console.log('✅ Create event button listener attached successfully');
+            return true;
+        }
+        
+        // Check admin authentication
+        async function checkAdminAuth() {
+            try {
+                // First check if any event exists
+                const eventResponse = await fetch('/api/admin/event/active');
+                
+                if (eventResponse.ok) {
+                    const event = await eventResponse.json();
+                    
+                    // If event exists, verify password
+                    if (event && event.id) {
+                        const adminPassword = sessionStorage.getItem('admin_password');
+                        if (!adminPassword) {
+                            // Redirect to login if no password stored
+                            window.location.href = '/admin-login';
+                            return;
+                        }
+                        
+                        // Verify password
+                        const verifyResponse = await fetch(`/api/admin/verify-password/${event.id}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ password: adminPassword })
+                        });
+                        
+                        if (!verifyResponse.ok) {
+                            sessionStorage.removeItem('admin_password');
+                            alert('Admin password incorrect or expired. Please login again.');
+                            window.location.href = '/admin-login';
+                            return;
+                        }
+                    }
+                    // If no event exists, allow access (first time setup)
+                } else {
+                    // If API error but not 404, might be database issue - allow access anyway
+                    console.log('Event check returned:', eventResponse.status);
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+                // Allow access if error (might be first time setup or database not ready)
+            }
+        }
+        
+        // Run auth check on page load (but don't block if it fails)
+        checkAdminAuth().catch(err => {
+            console.log('Auth check failed, allowing access:', err);
+        });
+        
+        // Set up event listeners when page is ready - try multiple times to ensure scripts are loaded
+        let setupAttempts = 0;
+        const maxSetupAttempts = 20; // Try for up to 4 seconds (20 * 200ms)
+        
+        function trySetupListeners() {
+            setupAttempts++;
+            if (setupEventListeners()) {
+                console.log('✅ Event listeners setup complete');
+                return true;
+            } else if (setupAttempts < maxSetupAttempts) {
+                // Retry after a short delay
+                setTimeout(trySetupListeners, 200);
+                return false;
+            } else {
+                console.error('❌ Failed to setup event listeners after', maxSetupAttempts, 'attempts');
+                // Last resort: try to attach a simple inline handler
+                const btn = document.getElementById('create-event-btn');
+                if (btn && typeof window.createNewEvent !== 'function') {
+                    btn.onclick = function(e) {
+                        e.preventDefault();
+                        alert('Error: JavaScript function not loaded. Please:\n1. Hard refresh (Ctrl+F5)\n2. Check browser console (F12)\n3. Make sure JavaScript is enabled');
+                    };
+                }
+                return false;
+            }
+        }
+        
+        // Wait for scripts to load, then try setup
+        function startSetup() {
+            // Give scripts a moment to execute
+            setTimeout(function() {
+                console.log('🔍 Checking for createNewEvent function...');
+                console.log('window.createNewEvent type:', typeof window.createNewEvent);
+                trySetupListeners();
+            }, 300);
+        }
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startSetup);
+        } else {
+            // DOM already loaded, start trying
+            startSetup();
+        }
+        
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+        }
+        
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        if (savedTheme === 'dark') {
+            document.body.classList.remove('light-mode');
+            document.body.classList.add('dark-mode');
+        }
+        
+        // Load current event on page load
+        loadCurrentEvent();
+    </script>
+</body>
+</html>
